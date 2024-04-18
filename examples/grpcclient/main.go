@@ -97,7 +97,7 @@ func run() bool {
 
 	failed = failed || logCall("callGetPriorityFeeGRPCStream", func() bool { return callGetPriorityFeeGRPCStream(g) })
 	failed = failed || logCall("callGetPriorityFeeGRPC", func() bool { return callGetPriorityFeeGRPC(g) })
-	failed = failed || logCall("callGetJitoTipGRPCStream", func() bool { return callGetJitoTipGRPCStream(g) })
+	failed = failed || logCall("callGetBundleTipGRPCStream", func() bool { return callGetBundleTipGRPCStream(g) })
 
 	// calls below this place an order and immediately cancel it
 	// you must specify:
@@ -155,7 +155,7 @@ func run() bool {
 		failed = failed || logCall("callRaydiumRouteTradeSwap", func() bool { return callRaydiumRouteSwap(g, ownerAddr) })
 		failed = failed || logCall("callJupiterRouteTradeSwap", func() bool { return callJupiterRouteSwap(g, ownerAddr) })
 		failed = failed || logCall("callJupiterSwapInstructions", func() bool { return callJupiterSwapInstructions(g, ownerAddr, uint64(1100), true) })
-
+		failed = failed || logCall("callRaydiumSwapInstructions", func() bool { return callRaydiumSwapInstructions(g, ownerAddr, uint64(1100), true) })
 	}
 
 	if cfg.RunSlowStream {
@@ -1373,6 +1373,33 @@ func callJupiterSwapInstructions(g *provider.GRPCClient, ownerAddr string, tipAm
 	return false
 }
 
+func callRaydiumSwapInstructions(g *provider.GRPCClient, ownerAddr string, tipAmount uint64, useBundle bool) bool {
+	log.Info("starting Raydium swap instructions test")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	log.Info("Raydium swap")
+	sig, err := g.SubmitRaydiumSwapInstructions(ctx, &pb.PostRaydiumSwapInstructionsRequest{
+		OwnerAddress: ownerAddr,
+		InToken:      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+		OutToken:     "So11111111111111111111111111111111111111112",
+		Slippage:     0.4,
+		InAmount:     0.001,
+		Tip:          &tipAmount,
+	}, useBundle, provider.SubmitOpts{
+		SubmitStrategy: pb.SubmitStrategy_P_SUBMIT_ALL,
+		SkipPreFlight:  config.BoolPtr(false),
+	})
+
+	if err != nil {
+		log.Error(err)
+		return true
+	}
+	log.Infof("Raydium swap transaction with instructions signature : %s", sig)
+	return false
+}
+
 func callRouteTradeSwap(g *provider.GRPCClient, ownerAddr string) bool {
 	log.Info("starting route trade swap test")
 
@@ -1660,17 +1687,17 @@ func callGetPriorityFeeGRPC(g *provider.GRPCClient) bool {
 	return false
 }
 
-func callGetJitoTipGRPCStream(g *provider.GRPCClient) bool {
+func callGetBundleTipGRPCStream(g *provider.GRPCClient) bool {
 	log.Info("starting get jito tip stream")
 
-	ch := make(chan *pb.GetJitoTipResponse)
+	ch := make(chan *pb.GetBundleTipResponse)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Stream response
-	stream, err := g.GetJitoTipStream(ctx)
+	stream, err := g.GetBundleTipStream(ctx)
 	if err != nil {
-		log.Errorf("error with GetJitoTip stream request: %v", err)
+		log.Errorf("error with GetBundleTip stream request: %v", err)
 		return true
 	}
 	stream.Into(ch)

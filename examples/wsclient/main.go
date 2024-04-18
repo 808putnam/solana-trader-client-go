@@ -82,7 +82,7 @@ func run() bool {
 	failed = failed || logCall("callGetRaydiumQuotes", func() bool { return callGetRaydiumQuotes(w) })
 	failed = failed || logCall("callGetJupiterQuotes", func() bool { return callGetJupiterQuotes(w) })
 	failed = failed || logCall("callGetPriorityFeeWS", func() bool { return callGetPriorityFeeWS(w) })
-	failed = failed || logCall("callGetJitoTipWSStream", func() bool { return callGetJitoTipWSStream(w) })
+	failed = failed || logCall("callGetBundleTipWSStream", func() bool { return callGetBundleTipWSStream(w) })
 	// streaming methods
 	failed = failed || logCall("callOrderbookWSStream", func() bool { return callOrderbookWSStream(w) })
 	failed = failed || logCall("callMarketDepthWSStream", func() bool { return callMarketDepthWSStream(w) })
@@ -134,7 +134,8 @@ func run() bool {
 		failed = failed || logCall("callRouteTradeSwap", func() bool { return callRouteTradeSwap(w, ownerAddr) })
 		failed = failed || logCall("callRaydiumTradeSwap", func() bool { return callRaydiumSwap(w, ownerAddr) })
 		failed = failed || logCall("callJupiterTradeSwap", func() bool { return callJupiterSwap(w, ownerAddr) })
-		failed = failed || logCall("callJupiterTradeSwap", func() bool { return callJupiterSwapInstructions(w, ownerAddr, nil, false) })
+		failed = failed || logCall("callJupiterSwapInstructions", func() bool { return callJupiterSwapInstructions(w, ownerAddr, nil, false) })
+		failed = failed || logCall("callRaydiumSwapInstructions", func() bool { return callRaydiumSwapInstructions(w, ownerAddr, nil, false) })
 		failed = failed || logCall("callRaydiumRouteTradeSwap", func() bool { return callRaydiumRouteSwap(w, ownerAddr) })
 		failed = failed || logCall("callJupiterRouteTradeSwap", func() bool { return callJupiterRouteSwap(w, ownerAddr) })
 	}
@@ -1375,6 +1376,31 @@ func callJupiterSwapInstructions(w *provider.WSClient, ownerAddr string, tipAmou
 	return false
 }
 
+func callRaydiumSwapInstructions(w *provider.WSClient, ownerAddr string, tipAmount *uint64, useBundle bool) bool {
+	log.Info("starting Raydium swap test")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sig, err := w.SubmitRaydiumSwapInstructions(ctx, &pb.PostRaydiumSwapInstructionsRequest{
+		OwnerAddress: ownerAddr,
+		InToken:      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+		OutToken:     "So11111111111111111111111111111111111111112",
+		Slippage:     0.4,
+		InAmount:     0.01,
+		Tip:          tipAmount,
+	}, useBundle, provider.SubmitOpts{
+		SubmitStrategy: pb.SubmitStrategy_P_SUBMIT_ALL,
+		SkipPreFlight:  config.BoolPtr(false),
+	})
+	if err != nil {
+		log.Error(err)
+		return true
+	}
+	log.Infof("Raydium swap transaction signature : %s", sig)
+	return false
+}
+
 func callJupiterRouteSwap(w *provider.WSClient, ownerAddr string) bool {
 	log.Info("starting Jupiter swap test")
 
@@ -1554,16 +1580,16 @@ func callGetPriorityFeeWS(w *provider.WSClient) bool {
 	return false
 }
 
-func callGetJitoTipWSStream(w *provider.WSClient) bool {
-	log.Info("starting get jito tip stream")
+func callGetBundleTipWSStream(w *provider.WSClient) bool {
+	log.Info("starting get bundle tip stream")
 
-	ch := make(chan *pb.GetJitoTipResponse)
+	ch := make(chan *pb.GetBundleTipResponse)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stream, err := w.GetJitoTipStream(ctx)
+	stream, err := w.GetBundleTipStream(ctx)
 	if err != nil {
-		log.Errorf("error with GetJitoTip stream request: %v", err)
+		log.Errorf("error with GetBundleTip stream request: %v", err)
 		return true
 	}
 

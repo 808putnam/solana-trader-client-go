@@ -614,10 +614,65 @@ func (w *WSClient) SubmitJupiterSwapInstructions(ctx context.Context, request *p
 
 	txBuilder.WithOpt(solana.TransactionAddressTables(addressLookupTable))
 
-	instructions, err := utils.ConvertProtoInstructionsToSolanaInstructions(swapInstructions.Instructions)
+	instructions, err := utils.ConvertJupiterInstructions(swapInstructions.Instructions)
 	if err != nil {
 		return nil, err
 	}
+
+	for _, inst := range instructions {
+		txBuilder.AddInstruction(inst)
+	}
+
+	txBuilder.SetFeePayer(w.privateKey.PublicKey())
+	blockHash, err := w.RecentBlockHash(ctx)
+
+	if err != nil {
+		panic(fmt.Errorf("server error: could not retrieve block hash: %w", err))
+	}
+
+	hash, err := solana.HashFromBase58(blockHash.BlockHash)
+	if err != nil {
+		return nil, err
+	}
+
+	txBuilder.SetRecentBlockHash(hash)
+	tx, err := txBuilder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	err = transaction.PartialSign(tx, w.privateKey.PublicKey(), make(map[solana.PublicKey]solana.PrivateKey))
+	if err != nil {
+		return nil, err
+	}
+
+	var txToBeSigned []*pb.TransactionMessage
+
+	txBase64, err := tx.ToBase64()
+	if err != nil {
+		return nil, err
+	}
+
+	txToBeSigned = append(txToBeSigned, &pb.TransactionMessage{
+		Content:   txBase64,
+		IsCleanup: false,
+	})
+
+	return w.SignAndSubmitBatch(ctx, txToBeSigned, useBundle, opts)
+}
+
+// SubmitRaydiumSwapInstructions builds a Raydium Swap transaction then signs it, and submits to the network.
+func (w *WSClient) SubmitRaydiumSwapInstructions(ctx context.Context, request *pb.PostRaydiumSwapInstructionsRequest, useBundle bool, opts SubmitOpts) (*pb.PostSubmitBatchResponse, error) {
+	swapInstructions, err := w.PostRaydiumSwapInstructions(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	instructions, err := utils.ConvertRaydiumInstructions(swapInstructions.Instructions)
+	if err != nil {
+		return nil, err
+	}
+	txBuilder := solana.NewTransactionBuilder()
 
 	for _, inst := range instructions {
 		txBuilder.AddInstruction(inst)
@@ -1008,12 +1063,12 @@ func (w *WSClient) GetPriorityFeeStream(ctx context.Context, project pb.Project,
 	})
 }
 
-// GetJitoTipStream subscribes to a stream of recent Jito tip percentiles
-func (w *WSClient) GetJitoTipStream(ctx context.Context) (connections.Streamer[*pb.GetJitoTipResponse], error) {
-	newResponse := func() *pb.GetJitoTipResponse {
-		return &pb.GetJitoTipResponse{}
+// GetBundleTipStream subscribes to a stream of recent Jito tip percentiles
+func (w *WSClient) GetBundleTipStream(ctx context.Context) (connections.Streamer[*pb.GetBundleTipResponse], error) {
+	newResponse := func() *pb.GetBundleTipResponse {
+		return &pb.GetBundleTipResponse{}
 	}
-	return connections.WSStreamProto(w.conn, ctx, "GetJitoTipStream", &pb.GetJitoTipRequest{}, newResponse)
+	return connections.WSStreamProto(w.conn, ctx, "GetBundleTipStream", &pb.GetBundleTipRequest{}, newResponse)
 }
 
 // V2 Openbook

@@ -415,10 +415,65 @@ func (g *GRPCClient) SubmitJupiterSwapInstructions(ctx context.Context, request 
 
 	txBuilder.WithOpt(solana.TransactionAddressTables(addressLookupTable))
 
-	instructions, err := utils.ConvertProtoInstructionsToSolanaInstructions(swapInstructions.Instructions)
+	instructions, err := utils.ConvertJupiterInstructions(swapInstructions.Instructions)
 	if err != nil {
 		return nil, err
 	}
+
+	for _, inst := range instructions {
+		txBuilder.AddInstruction(inst)
+	}
+
+	txBuilder.SetFeePayer(g.privateKey.PublicKey())
+	blockHash, err := g.RecentBlockHash(ctx)
+
+	if err != nil {
+		panic(fmt.Errorf("server error: could not retrieve block hash: %w", err))
+	}
+
+	hash, err := solana.HashFromBase58(blockHash.BlockHash)
+	if err != nil {
+		return nil, err
+	}
+
+	txBuilder.SetRecentBlockHash(hash)
+	tx, err := txBuilder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	err = transaction.PartialSign(tx, g.privateKey.PublicKey(), make(map[solana.PublicKey]solana.PrivateKey))
+	if err != nil {
+		return nil, err
+	}
+
+	var txToBeSigned []*pb.TransactionMessage
+
+	txBase64, err := tx.ToBase64()
+	if err != nil {
+		return nil, err
+	}
+
+	txToBeSigned = append(txToBeSigned, &pb.TransactionMessage{
+		Content:   txBase64,
+		IsCleanup: false,
+	})
+
+	return g.signAndSubmitBatch(ctx, txToBeSigned, useBundle, opts)
+}
+
+// SubmitRaydiumSwapInstructions builds a Raydium Swap transaction then signs it, and submits to the network.
+func (g *GRPCClient) SubmitRaydiumSwapInstructions(ctx context.Context, request *pb.PostRaydiumSwapInstructionsRequest, useBundle bool, opts SubmitOpts) (*pb.PostSubmitBatchResponse, error) {
+	swapInstructions, err := g.PostRaydiumSwapInstructions(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	instructions, err := utils.ConvertRaydiumInstructions(swapInstructions.Instructions)
+	if err != nil {
+		return nil, err
+	}
+	txBuilder := solana.NewTransactionBuilder()
 
 	for _, inst := range instructions {
 		txBuilder.AddInstruction(inst)
@@ -809,14 +864,14 @@ func (g *GRPCClient) GetPriorityFeeStream(ctx context.Context, project pb.Projec
 	return connections.GRPCStream[pb.GetPriorityFeeResponse](stream, fmt.Sprint(percentile)), nil
 }
 
-// GetJitoTipStream subscribes to a stream of Jito tip percentiles
-func (g *GRPCClient) GetJitoTipStream(ctx context.Context) (connections.Streamer[*pb.GetJitoTipResponse], error) {
-	stream, err := g.apiClient.GetJitoTipStream(ctx, &pb.GetJitoTipRequest{})
+// GetBundleTipStream subscribes to a stream of bundle tip percentiles
+func (g *GRPCClient) GetBundleTipStream(ctx context.Context) (connections.Streamer[*pb.GetBundleTipResponse], error) {
+	stream, err := g.apiClient.GetBundleTipStream(ctx, &pb.GetBundleTipRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	return connections.GRPCStream[pb.GetJitoTipResponse](stream, ""), nil
+	return connections.GRPCStream[pb.GetBundleTipResponse](stream, ""), nil
 }
 
 // V2 Openbook
